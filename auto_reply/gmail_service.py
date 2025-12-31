@@ -415,14 +415,15 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
                     log.save(update_fields=['meta'])
                     results.append({'id': m['id'], 'subject': subject, 'rule': rule.rule_name, 'matched': True, 'sent': False, 'error': str(_e)})
 
-        if new_history_id:
+        # Use max_history_id from processed messages, or fall back to new_history_id from API
+        final_history_id = max_history_id or new_history_id
+        if final_history_id:
             state, _ = GmailSyncState.objects.get_or_create(user=user)
-            # Only update if new_history_id is greater than what we had (though it usually is)
-            # Actually, just trust Gmail's latest historyId
-            state.last_history_id = new_history_id
+            state.last_history_id = final_history_id
             state.save(update_fields=['last_history_id', 'updated_at'])
+            print(f"[DEBUG] Updated historyId to {final_history_id} for user {user.username}", file=sys.stderr)
 
-        return {'processed': processed, 'matched': matched, 'sent': sent_count, 'skipped': skipped, 'details': results, 'last_history_id': new_history_id}
+        return {'processed': processed, 'matched': matched, 'sent': sent_count, 'skipped': skipped, 'details': results, 'last_history_id': final_history_id}
     except Exception as e:
         error_str = str(e)
         if 'unauthorized' in error_str.lower() or 'invalid_grant' in error_str.lower():
