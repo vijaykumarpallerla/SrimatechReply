@@ -195,7 +195,17 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
             print(f"[DEBUG] Loop: Processing message id: {m['id']} for user: {user.username}", file=sys.stderr)
             
             # CRITICAL: Get message metadata FIRST to extract historyId (even if we skip the message)
-            msg = service.users().messages().get(userId='me', id=m['id'], format='metadata').execute()
+            try:
+                msg = service.users().messages().get(userId='me', id=m['id'], format='metadata').execute()
+                print(f"[DEBUG] Got message metadata successfully", file=sys.stderr)
+            except Exception as e:
+                error_str = str(e)
+                if '404' in error_str or 'not found' in error_str.lower():
+                    print(f"[DEBUG] Message {m['id']} not found (404), skipping", file=sys.stderr)
+                    continue
+                else:
+                    print(f"[ERROR] Failed to fetch message {m['id']}: {e}", file=sys.stderr)
+                    raise
             
             # Update max_history_id from this message (BEFORE checking if we should skip)
             history_id = str(msg.get('historyId') or '')
@@ -214,7 +224,8 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
             if ReplyLog.objects.filter(inbound_id=m['id']).exists():
                 print(f"[DEBUG] Skipping message {m['id']} (historyId={history_id}) because we already replied to it.", file=sys.stderr)
                 continue
-
+            
+            print(f"[DEBUG] Message {m['id']} is NEW, will process it", file=sys.stderr)
 
             processed += 1
             thread_id = msg.get('threadId')
@@ -293,7 +304,12 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
                 print(f"[DEBUG] Action attachments JSON: {action.attachments}", file=sys.stderr)
                 print(f"[DEBUG] Fetching signature...", file=sys.stderr)
 
-                email_subject = f"Re: {subject}" if subject else (rule.rule_name or 'Auto reply')
+                # For INBOX emails, add "Re:" prefix. For SENT emails (from user), don't add "Re:"
+                if is_sent_by_user:
+                    email_subject = subject if subject else (rule.rule_name or 'Auto reply')
+                else:
+                    email_subject = f"Re: {subject}" if subject else (rule.rule_name or 'Auto reply')
+                
                 html_body = action.email_body or rule.reply_message or ''
                 
                 # Fetch Gmail signature with caching to avoid repeated API calls
@@ -322,15 +338,6 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
                         _signature_cache[cache_key] = ''
                 else:
                     print(f"[DEBUG] Using cached Gmail signature for user {user.username}", file=sys.stderr)
-                
-                signature_html = _signature_cache.get(cache_key, '') or ''
-                
-                # If signature does not contain any HTML tags, convert line breaks to <br>
-                import re
-                if signature_html and not re.search(r'<[a-zA-Z]+', signature_html):
-                    signature_html = signature_html.replace('\n', '<br>')
-
-                html_body += f"<br><br>{signature_html}"
                 msg_root = MIMEMultipart('related')
                 msg_root['To'] = to_addr
                 msg_root['Subject'] = email_subject
@@ -438,6 +445,20 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
         if 'unauthorized' in error_str.lower() or 'invalid_grant' in error_str.lower():
             print(f"[ERROR] AUTHORIZATION FAILED for user {user.username}: {error_str}", file=sys.stderr)
             print(f"[ERROR] User needs to RE-LOGIN to refresh tokens", file=sys.stderr)
-            return {'error': 'auth_failed', 'details': 'User authorization expired. Please log in again.'}
-        return {'error': str(e)}
+        raise
 
+
+def cleanup_old_reply_logs(days_to_keep=150):
+    """
+    Delete ReplyLog entries older than specified days (default: 150 days).
+    Called automatically by scheduler.
+    """
+    cutoff_date = timezone.now() - timedelta(days=days_to_keep)
+    deleted_count, _ = ReplyLog.objects.filter(sent_at__lt=cutoff_date).delete()
+    
+    if deleted_count > 0:
+        print(f"[CLEANUP] Deleted {deleted_count} old ReplyLog entries (older than {days_to_keep} days, before {cutoff_date.strftime('%Y-%m-%d')})", file=sys.stderr)
+    else:
+        print(f"[CLEANUP] No old ReplyLog entries to delete (keeping entries from last {days_to_keep} days)", file=sys.stderr)
+    
+    return deleted_count

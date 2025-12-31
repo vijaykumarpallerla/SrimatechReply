@@ -57,6 +57,16 @@ def start_scheduler():
             coalesce=True,
             max_instances=1,
         )
+        # Cleanup old ReplyLog entries every 24 hours (runs at midnight UTC)
+        scheduler.add_job(
+            func=_cleanup_old_replies,
+            trigger="interval",
+            hours=24,
+            id="cleanup_old_replies",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
         scheduler.start()
         _scheduler = scheduler
         logger.info("Started in-app Gmail pull scheduler (APScheduler) every %ss", interval_seconds)
@@ -112,7 +122,12 @@ def _pull_for_all_connected_users():
             # q="" is fine now as gmail_service handles the default fallback logic internally
             return gmail_pull_for_user(user=token.user, max_results=20)
         except Exception as exc:
-            logger.exception("Gmail auto-pull failed for user %s: %s", token.user.pk, exc)
+            # For 404 errors (deleted messages), just log without traceback
+            exc_str = str(exc)
+            if '404' in exc_str or 'not found' in exc_str.lower():
+                logger.warning("Gmail auto-pull: Message not found (404) for user %s", token.user.pk)
+            else:
+                logger.exception("Gmail auto-pull failed for user %s: %s", token.user.pk, exc)
             return {}
 
     # Use ThreadPoolExecutor to run in parallel
@@ -134,3 +149,17 @@ def _pull_for_all_connected_users():
         sent_total,
         skipped_total,
     )
+
+def _cleanup_old_replies():
+    """
+    Cleanup job: Delete ReplyLog entries older than 150 days.
+    Runs automatically every 24 hours via APScheduler.
+    """
+    from .gmail_service import cleanup_old_reply_logs
+    
+    try:
+        deleted_count = cleanup_old_reply_logs(days_to_keep=150)
+        if deleted_count > 0:
+            logger.info("Cleanup: Deleted %d old ReplyLog entries", deleted_count)
+    except Exception as exc:
+        logger.exception("Cleanup job failed: %s", exc)
