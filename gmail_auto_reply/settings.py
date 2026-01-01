@@ -13,13 +13,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 
-# Load environment variables from .env (if present) without requiring extra packages
-# Prefer python-dotenv if available; otherwise do a tiny fallback parser
+# Load environment variables from .env (if present)
+env_path = Path(__file__).resolve().parent.parent / '.env'
 try:
     from dotenv import load_dotenv  # type: ignore
-    load_dotenv(Path(__file__).resolve().parent.parent / '.env')
-except Exception:
-    env_path = Path(__file__).resolve().parent.parent / '.env'
+    load_dotenv(env_path, override=True)
+except Exception as e:
+    # Fallback manual parser
     if env_path.exists():
         try:
             for line in env_path.read_text(encoding='utf-8').splitlines():
@@ -27,7 +27,7 @@ except Exception:
                 if not line or line.startswith('#') or '=' not in line:
                     continue
                 k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip())
+                os.environ[k.strip()] = v.strip()
         except Exception:
             pass
 

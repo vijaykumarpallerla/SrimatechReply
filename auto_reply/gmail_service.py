@@ -242,21 +242,19 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
             original_message_id = get_header(headers, 'Message-ID')
             
             # Determine Recipient:
-            # If it's an INBOX mail, we reply to 'Reply-To' or 'From'.
-            # If it's a SENT mail (from us), we reply to 'To'.
-            user_email = user.email # The connected user's email
-            
-            # Check if 'From' is the user themselves
+            # If From = user's email (SENT mail), reply to To address
+            # If From != user's email (INBOX mail), prefer Reply-To, else From
+            user_email = user.email
             is_sent_by_user = (from_email and user_email and from_email.lower() == user_email.lower())
             
             if is_sent_by_user:
-                # It's a SENT mail. Reply to the 'To' address.
+                # SENT mail: reply to the To address
                 to_addr = parse_email_address(get_header(headers, 'To'))
-                print(f"[DEBUG] Message {m['id']} is SENT by user. Target recipient: {to_addr}", file=sys.stderr)
+                print(f"[DEBUG] Message is SENT by user. Target recipient: {to_addr}", file=sys.stderr)
             else:
-                # It's an INBOX mail. Reply to sender.
+                # INBOX mail: prefer Reply-To, fallback to From
                 to_addr = reply_to or from_email
-                print(f"[DEBUG] Message {m['id']} is INBOX from {from_email}. Target recipient: {to_addr}", file=sys.stderr)
+                print(f"[DEBUG] Message is INBOX. Target recipient (Reply-To preferred): {to_addr}", file=sys.stderr)
 
             if not to_addr:
                 print(f"[DEBUG] No recipient found for message id: {m['id']}", file=sys.stderr)
@@ -305,11 +303,8 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
                 print(f"[DEBUG] Action attachments JSON: {action.attachments}", file=sys.stderr)
                 print(f"[DEBUG] Fetching signature...", file=sys.stderr)
 
-                # For INBOX emails, add "Re:" prefix. For SENT emails (from user), don't add "Re:"
-                if is_sent_by_user:
-                    email_subject = subject if subject else (rule.rule_name or 'Auto reply')
-                else:
-                    email_subject = f"Re: {subject}" if subject else (rule.rule_name or 'Auto reply')
+                # Always reply with a "Re:" prefix unless no subject is present
+                email_subject = f"Re: {subject}" if subject else (rule.rule_name or 'Auto reply')
                 
                 html_body = action.email_body or rule.reply_message or ''
                 
