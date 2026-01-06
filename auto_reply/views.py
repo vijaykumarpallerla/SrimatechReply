@@ -213,6 +213,11 @@ def rule_create(request):
 					pass
 		group_indices = sorted(set(group_indices))
 		print(f"[DEBUG] rule_create attachment group indices detected: {group_indices}", file=sys.stderr)
+		
+		# Set user-specific Cloudinary credentials before uploading
+		if hasattr(default_storage, 'set_user_credentials'):
+			default_storage.set_user_credentials(request.user)
+		
 		for gi in group_indices:
 			label = request.POST.get(f'attachment_group_label_{gi}', '')
 			files = request.FILES.getlist(f'attachment_{gi}')
@@ -308,6 +313,11 @@ def rule_edit(request, rule_id):
 		attachments_meta = []
 		# Start with previously saved attachments for this action, excluding user-deleted ones
 		preserved = []
+		
+		# Set user-specific Cloudinary credentials before deleting attachments
+		if hasattr(default_storage, 'set_user_credentials'):
+			default_storage.set_user_credentials(request.user)
+		
 		for att in old_action_attachments.get(action_idx, []) or []:
 			try:
 				if att.get('path') in delete_paths:
@@ -338,6 +348,11 @@ def rule_edit(request, rule_id):
 					pass
 		group_indices = sorted(set(group_indices))
 		print(f"[DEBUG] rule_edit attachment group indices detected: {group_indices}", file=sys.stderr)
+		
+		# Set user-specific Cloudinary credentials before uploading
+		if hasattr(default_storage, 'set_user_credentials'):
+			default_storage.set_user_credentials(request.user)
+		
 		for gi in group_indices:
 			label = request.POST.get(f'attachment_group_label_{gi}', '')
 			files = request.FILES.getlist(f'attachment_{gi}')
@@ -565,6 +580,11 @@ def test_fire(request):
 		# Attach files from storage
 		attachments_meta = action.attachments or []
 		attached = []
+	
+		# Set user-specific Cloudinary credentials before downloading attachments
+		if hasattr(default_storage, 'set_user_credentials'):
+			default_storage.set_user_credentials(request.user)
+	
 		for att in attachments_meta:
 			try:
 				path = att.get('path')
@@ -662,5 +682,32 @@ def test_fire(request):
 			return JsonResponse(resp, status=500)
 	except Exception as e:
 		return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def cloudinary_api_key_view(request):
+	"""GET returns current key, POST saves new key for the logged-in user."""
+	try:
+		from .models import UserProfile
+		if request.method == 'GET':
+			try:
+				profile = getattr(request.user, 'profile', None)
+				api_key = (profile.cloudinary_api_key if profile else '') or ''
+				return JsonResponse({'status': 'success', 'api_key': api_key})
+			except Exception as e:
+				return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+		if request.method == 'POST':
+			api_key = (request.POST.get('cloudinary_api_key') or '').strip()
+			if not api_key:
+				return JsonResponse({'status': 'error', 'message': 'API key cannot be empty'}, status=400)
+			profile, _ = UserProfile.objects.get_or_create(user=request.user)
+			profile.cloudinary_api_key = api_key
+			profile.save(update_fields=['cloudinary_api_key'])
+			return JsonResponse({'status': 'success', 'message': 'API key saved successfully'})
+
+		return JsonResponse({'status': 'error', 'message': 'Invalid method'}, status=400)
+	except Exception as e:
+		return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 

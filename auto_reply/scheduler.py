@@ -17,6 +17,9 @@ _busy_lock = threading.Lock()
 
 def _should_start_scheduler() -> bool:
     """Ensure we only start once in the Django autoreload 'main' process."""
+    # Allow explicit opt-out in any environment
+    if os.environ.get("DISABLE_IN_APP_SCHEDULER") == "1":
+        return False
     # When runserver uses the auto-reloader, Django sets RUN_MAIN='true' in the child.
     run_main = os.environ.get("RUN_MAIN") == "true"
     # If not using runserver (e.g., gunicorn) there might be no RUN_MAIN; allow start in DEBUG.

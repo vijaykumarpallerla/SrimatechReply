@@ -403,6 +403,11 @@ def gmail_pull_for_user(user, q: str = 'newer_than:1h', max_results: int = 10) -
                 
                 attached_count = 0
                 print(f"[DEBUG] gmail_service processing {len(action.attachments or [])} attachments for rule {rule.rule_name}", file=sys.stderr)
+                
+                # Set user-specific Cloudinary credentials before downloading attachments
+                if hasattr(default_storage, 'set_user_credentials'):
+                    default_storage.set_user_credentials(user)
+                
                 for att in (action.attachments or []):
                     try:
                         path = att.get('path')

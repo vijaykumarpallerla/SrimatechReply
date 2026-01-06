@@ -19,5 +19,7 @@ urlpatterns = [
     path('gmail/pull/', views.gmail_pull, name='gmail_pull'),
     # Testing endpoint to evaluate a rule against a sample email and optionally send a reply
     path('rules/test-fire/', views.test_fire, name='test_fire'),
+    # API endpoint for Cloudinary API key management (GET/POST in one view)
+    path('api/user/cloudinary-key/', views.cloudinary_api_key_view, name='cloudinary_api_key'),
 
 ]

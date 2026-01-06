@@ -4,7 +4,7 @@
     <div class="sidebar-title">Automation</div>
     <ul>
         <li class="active"><span>⚡</span> Rules <button id="addRuleBtn">+</button></li>
-
+        <li><button id="apiKeyBtn" style="background:none;border:none;color:#7eb6ff;cursor:pointer;width:100%;text-align:left;padding:8px 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span>🔑</span> Cloudinary API Key</button></li>
     </ul>
 </div>
 <div class="main-content">
@@ -23,6 +23,97 @@
     </div>
     <div id="rulesTableContainer"></div>
     <div id="ruleModal" class="modal" style="display:none;"></div>
+
+    <!-- Cloudinary API Key Modal -->
+    <div id="apiKeyModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(24,28,36,0.7);backdrop-filter:blur(4px);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#23283a;padding:32px 28px;border-radius:10px;min-width:420px;box-shadow:0 2px 16px rgba(0,0,0,0.18);color:#fff;position:relative;">
+            <!-- Close button (X) top right corner -->
+            <button type="button" id="closeApiKeyModalBtn" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#b3c6f7;font-size:1.3rem;cursor:pointer;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;">×</button>
+
+            <h3 style="margin:0 0 18px 0;color:#f3f6fa;">Cloudinary API Key</h3>
+            <p style="margin:0 0 18px 0;color:#b3c6f7;font-size:0.95rem;">Enter your personal Cloudinary API key for independent attachment storage quota</p>
+
+            <form id="apiKeyForm" style="display:flex;flex-direction:column;gap:12px;">
+                {% csrf_token %}
+                <div>
+                    <label style="display:block;margin-bottom:6px;color:#b3c6f7;font-size:1rem;">API Key</label>
+                    <input type="password" id="apiKeyInput" name="cloudinary_api_key" placeholder="pk_..." style="background:#181c24;color:#fff;border:1px solid #31374a;padding:10px 16px;border-radius:6px;font-size:1.1rem;width:100%;box-sizing:border-box;">
+                </div>
+                <button type="submit" style="background:#8faaff;color:#23283a;border:none;padding:10px 18px;border-radius:6px;font-size:1.1rem;font-weight:600;cursor:pointer;">Save</button>
+            </form>
+        </div>
+    </div>
 </div>
 <script src="/static/rules_dashboard.js"></script>
+
+<script>
+    // API Key Modal Logic
+    document.addEventListener('DOMContentLoaded', function() {
+        const apiKeyBtn = document.getElementById('apiKeyBtn');
+        const apiKeyModal = document.getElementById('apiKeyModal');
+        const closeApiKeyModalBtn = document.getElementById('closeApiKeyModalBtn');
+        const apiKeyForm = document.getElementById('apiKeyForm');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+
+        // Open modal
+        if (apiKeyBtn) {
+            apiKeyBtn.addEventListener('click', function() {
+                apiKeyModal.style.display = 'flex';
+                // Load current API key if exists
+                fetch('/api/user/cloudinary-key/', {
+                    method: 'GET',
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.api_key) {
+                        apiKeyInput.value = data.api_key;
+                    }
+                })
+                .catch(e => console.warn('Could not load API key:', e));
+            });
+        }
+
+        // Close modal
+        if (closeApiKeyModalBtn) {
+            closeApiKeyModalBtn.addEventListener('click', function() {
+                apiKeyModal.style.display = 'none';
+            });
+        }
+
+        // Close modal on outside click
+        if (apiKeyModal) {
+            apiKeyModal.addEventListener('click', function(e) {
+                if (e.target === apiKeyModal) {
+                    apiKeyModal.style.display = 'none';
+                }
+            });
+        }
+
+        // Save API key
+        if (apiKeyForm) {
+            apiKeyForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(apiKeyForm);
+                fetch('/api/user/cloudinary-key/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('API key saved successfully!');
+                        apiKeyModal.style.display = 'none';
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to save'));
+                    }
+                })
+                .catch(e => {
+                    alert('Error saving API key: ' + e);
+                });
+            });
+        }
+    });
+</script>
 {% endblock %}

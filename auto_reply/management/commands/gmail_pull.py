@@ -17,11 +17,19 @@ class Command(BaseCommand):
         only = options['user']
         User = get_user_model()
         users = User.objects.all()
+        # If a specific user is requested, resolve to exactly one user
         if only:
             try:
-                users = users.filter(username=only) | users.filter(email=only)
-            except Exception:
-                users = users.filter(username=only)
+                user = User.objects.filter(username=only).first()
+                if not user:
+                    user = User.objects.filter(email=only).first()
+                if not user:
+                    self.stdout.write(self.style.WARNING(f"No user matched: {only}"))
+                    return
+                users = User.objects.filter(pk=user.pk)
+            except Exception as exc:
+                self.stdout.write(self.style.WARNING(f"User lookup failed for {only}: {exc}"))
+                return
         total_processed = 0
         total_sent = 0
         total_skipped = 0

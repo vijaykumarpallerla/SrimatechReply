@@ -93,6 +93,8 @@ class UserProfile(models.Model):
 	# Signature fields removed in favor of native Gmail signature
 	resume = models.FileField(upload_to='resumes/', blank=True, null=True, help_text="Upload your resume (PDF, DOCX, etc.)")
 	uploaded_at = models.DateTimeField(auto_now=True)
+	# User's own Cloudinary API key for independent quota (separate from shared key)
+	cloudinary_api_key = models.CharField(max_length=255, blank=True, null=True, help_text="Your personal Cloudinary API key for independent attachment storage")
 
 	def __str__(self):
 		return f"Profile for {self.user.username}"

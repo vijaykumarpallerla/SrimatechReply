@@ -11,12 +11,66 @@ import cloudinary.api
 import os
 
 
+def get_user_cloudinary_credentials(user):
+    """
+    Get Cloudinary credentials for a specific user.
+    Returns (cloud_name, api_key, api_secret) tuple.
+    Falls back to shared credentials if user hasn't set their own.
+    """
+    user_api_key = None
+    try:
+        if hasattr(user, 'profile') and user.profile.cloudinary_api_key:
+            user_api_key = user.profile.cloudinary_api_key.strip()
+    except Exception:
+        pass
+    
+    if user_api_key:
+        # Support multiple formats the user might paste:
+        # 1) Simple:    "api_key:api_secret@cloud_name"
+        # 2) URL:       "cloudinary://api_key:api_secret@cloud_name"
+        # 3) Full env:  "CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name"
+        try:
+            key_str = user_api_key
+            if key_str.startswith('CLOUDINARY_URL='):
+                key_str = key_str.split('=', 1)[1].strip()
+            if key_str.startswith('cloudinary://'):
+                from urllib.parse import urlparse
+                parsed = urlparse(key_str)
+                cloud_name = parsed.hostname
+                api_key = parsed.username
+                api_secret = parsed.password
+                if cloud_name and api_key and api_secret:
+                    print(f"[DEBUG] Using user's personal Cloudinary credentials (URL): cloud={cloud_name}, key={'***'}")
+                    return (cloud_name, api_key, api_secret)
+            # Fallback to simple format
+            if '@' in key_str and ':' in key_str:
+                auth_part, cloud_name = key_str.rsplit('@', 1)
+                api_key, api_secret = auth_part.split(':', 1)
+                print(f"[DEBUG] Using user's personal Cloudinary credentials (simple): cloud={cloud_name}, key={'***'}")
+                return (cloud_name, api_key, api_secret)
+        except Exception as e:
+            print(f"[WARNING] Failed to parse user's Cloudinary key, using shared: {e}")
+    
+    # Fallback to shared credentials from environment
+    cloudinary_url = os.environ.get('CLOUDINARY_URL')
+    if cloudinary_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(cloudinary_url)
+        return (parsed.hostname, parsed.username, parsed.password)
+    else:
+        return (
+            os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            os.environ.get('CLOUDINARY_API_KEY'),
+            os.environ.get('CLOUDINARY_API_SECRET')
+        )
+
+
 class CloudinaryStorage(Storage):
     """Django storage backend using Cloudinary for file uploads."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Parse CLOUDINARY_URL to extract credentials
+        # Initialize with shared credentials by default
         cloudinary_url = os.environ.get('CLOUDINARY_URL')
         if cloudinary_url:
             # Parse URL: cloudinary://api_key:api_secret@cloud_name
@@ -32,6 +86,11 @@ class CloudinaryStorage(Storage):
             self.api_secret = os.environ.get('CLOUDINARY_API_SECRET')
         
         print(f"[DEBUG] CloudinaryStorage init: cloud_name={self.cloud_name}, api_key={'***' if self.api_key else None}")
+
+    def set_user_credentials(self, user):
+        """Set Cloudinary credentials for a specific user"""
+        self.cloud_name, self.api_key, self.api_secret = get_user_cloudinary_credentials(user)
+        print(f"[DEBUG] CloudinaryStorage set user credentials: cloud={self.cloud_name}")
 
     def _get_public_id(self, name):
         """Convert file path to Cloudinary public_id, preserving folder structure and extension."""
