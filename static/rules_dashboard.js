@@ -61,11 +61,13 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
 
-        // Toggle Switch
-        document.querySelectorAll('.toggle-enabled').forEach(el => {
+        // Toggle Switch (prevent row open on any toggle click)
+        document.querySelectorAll('.toggle-switch, .toggle-enabled, .toggle-slider').forEach(el => {
             el.addEventListener('click', function (e) {
-                e.stopPropagation(); // Prevent row click
+                e.stopPropagation();
             });
+        });
+        document.querySelectorAll('.toggle-enabled').forEach(el => {
             el.addEventListener('change', function (e) {
                 fetch(`/rule/${el.dataset.id}/toggle/`, { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
                     .then(() => fetchRules());
